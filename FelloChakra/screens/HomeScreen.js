@@ -1,10 +1,10 @@
-import {view, text, StyleSheet} from "react-native";
+import {View, Text, StyleSheet} from "react-native";
 
 export default function HomeScreen() {
     return (
-        <view style = {styles.container}>
-            <text style = {styles.title}> Starting with Tech LeadHers </text>
-        </view>
+        <View style = {styles.container}>
+            <Text style = {styles.title}> Starting with Tech LeadHers </Text>
+        </View>
     );
 }
 
