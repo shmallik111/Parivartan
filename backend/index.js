@@ -1,20 +1,44 @@
-require("dotenv").config();
-const express = require("express");
-const cors = require("cors");
-const authRoutes = require("./routes/auth");
-const formRoutes = require("./routes/forms");
-const applicationRoutes = require("./routes/applications");
+require('dotenv').config();
+const express = require('express');
+const cors = require('cors');
+const helmet = require('helmet');
+const { sequelize } = require('./config/database');
+const authRoutes = require('./routes/auth');
+const formRoutes = require('./routes/forms');
+const applicationRoutes = require('./routes/applications');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Middleware
+// ============================================
+// SECURITY MIDDLEWARE
+// ============================================
+// Helmet helps secure Express apps by setting various HTTP headers
+app.use(helmet());
+
+// ============================================
+// BODY PARSING MIDDLEWARE
+// ============================================
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// CORS Configuration - Restrict to specific origins
+const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:3000').split(',');
 app.use(
   cors({
-    origin: process.env.CORS_ORIGIN || "*",
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) return callback(null, true);
+      
+      if (allowedOrigins.includes(origin.trim())) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS policy'));
+      }
+    },
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
   })
 );
 
@@ -37,15 +61,31 @@ app.use((err, req, res, next) => {
   });
 });
 
-// 404 handler
-app.use((req, res) => {
-  res.status(404).json({ error: "Route not found" });
-});
+// Start the server with database connection check
+const startServer = async () => {
+  try {
+    // Test database connection
+    await sequelize.authenticate();
+    console.log('✅ Database connection has been established successfully.');
+    
+    // Sync database models
+    if (process.env.NODE_ENV !== 'test') {
+      await sequelize.sync();
+      console.log('✅ Database synchronized');
+    }
+    
+    // Start listening
+    app.listen(PORT, () => {
+      console.log(`🚀 Server is running on http://localhost:${PORT}`);
+      console.log(`📊 Database: ${sequelize.getDialect()} (${process.env.NODE_ENV || 'development'})`);
+    });
+  } catch (error) {
+    console.error('❌ Unable to start server:', error);
+    process.exit(1);
+  }
+};
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-  console.log(`Environment: ${process.env.NODE_ENV || "development"}`);
-});
+// Start the application
+startServer();
 
 module.exports = app;

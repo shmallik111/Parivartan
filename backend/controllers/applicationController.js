@@ -1,6 +1,7 @@
 const db = require("../config/database");
 
 const submitApplication = async (req, res) => {
+  const client = await db.getClient();
   try {
     const { form_id, answers } = req.body;
     const userId = req.user.id;
@@ -9,41 +10,60 @@ const submitApplication = async (req, res) => {
       return res.status(400).json({ error: "Form ID and answers required" });
     }
 
+    // Start transaction
+    await client.query("BEGIN");
+
     // Check if form exists
-    const formResult = await db.query("SELECT * FROM forms WHERE id = $1", [form_id]);
+    const formResult = await client.query("SELECT * FROM forms WHERE id = $1", [form_id]);
     if (formResult.rows.length === 0) {
+      await client.query("ROLLBACK");
       return res.status(404).json({ error: "Form not found" });
     }
 
     // Get all questions
-    const questionsResult = await db.query(
+    const questionsResult = await client.query(
       "SELECT * FROM questions WHERE form_id = $1",
       [form_id]
     );
 
     // Check knockout questions
     let is_rejected = false;
+    let rejection_reason = null;
     for (const question of questionsResult.rows) {
       if (question.is_knockout && answers[question.id] !== question.correct_answer) {
         is_rejected = true;
+        rejection_reason = `Failed knockout question: "${question.text}"`;
         break;
       }
     }
 
-    // Insert application
-    const result = await db.query(
-      "INSERT INTO applications (form_id, user_id, answers, is_rejected) VALUES ($1, $2, $3, $4) RETURNING *",
-      [form_id, userId, JSON.stringify(answers), is_rejected]
+    // Insert application within transaction
+    const result = await client.query(
+      "INSERT INTO applications (form_id, user_id, answers, is_rejected, rejection_reason) VALUES ($1, $2, $3, $4, $5) RETURNING *",
+      [form_id, userId, JSON.stringify(answers), is_rejected, rejection_reason]
     );
+
+    // Commit transaction
+    await client.query("COMMIT");
 
     res.status(201).json({
       message: "Application submitted successfully",
       application: result.rows[0],
       is_rejected,
+      rejection_reason,
     });
   } catch (error) {
+    // Rollback on error
+    try {
+      await client.query("ROLLBACK");
+    } catch (rollbackError) {
+      console.error("Rollback error:", rollbackError);
+    }
+
     console.error("Submit application error:", error);
     res.status(500).json({ error: "Failed to submit application" });
+  } finally {
+    client.release();
   }
 };
 

@@ -42,9 +42,68 @@ const validateFormSubmission = (req, res, next) => {
   next();
 };
 
+const validateQuestion = (req, res, next) => {
+  const { text, type, options, is_knockout, correct_answer } = req.body;
+
+  // Validate question text
+  if (!text || typeof text !== "string" || text.trim().length < 5) {
+    return res.status(400).json({ 
+      error: "Question text is required and must be at least 5 characters long" 
+    });
+  }
+
+  // Validate question type
+  const validTypes = ["text", "multiple-choice", "checkbox", "knockout"];
+  if (!validTypes.includes(type)) {
+    return res.status(400).json({ 
+      error: `Invalid question type. Must be one of: ${validTypes.join(", ")}` 
+    });
+  }
+
+  // Validate options for multiple-choice and checkbox types
+  if ((type === "multiple-choice" || type === "checkbox") && !options) {
+    return res.status(400).json({ 
+      error: "Options are required for multiple-choice and checkbox questions" 
+    });
+  }
+
+  if (options && !Array.isArray(options)) {
+    return res.status(400).json({ 
+      error: "Options must be an array" 
+    });
+  }
+
+  if (options && options.length < 2) {
+    return res.status(400).json({ 
+      error: "At least 2 options are required for choice-based questions" 
+    });
+  }
+
+  // Validate knockout question
+  if (is_knockout) {
+    if (!correct_answer) {
+      return res.status(400).json({ 
+        error: "Knockout questions must have a correct_answer" 
+      });
+    }
+
+    // For multiple-choice, verify correct_answer is in options
+    if (type === "multiple-choice" && options) {
+      if (!options.includes(correct_answer)) {
+        return res.status(400).json({ 
+          error: "correct_answer must be one of the provided options" 
+        });
+      }
+    }
+  }
+
+  next();
+};
+
 module.exports = {
   validateEmail,
   validatePassword,
   validateSignup,
   validateFormSubmission,
+  validateQuestion,
 };

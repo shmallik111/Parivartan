@@ -1,111 +1,73 @@
-const { Pool } = require("pg");
-require("dotenv").config();
+const { Sequelize } = require('sequelize');
+const path = require('path');
+require('dotenv').config();
 
-// Build connection config - supports both CONNECTION STRING and individual parameters
-let poolConfig;
-
-if (process.env.DATABASE_URL) {
-  // Use connection string (recommended for cloud databases like Supabase)
-  poolConfig = {
-    connectionString: process.env.DATABASE_URL,
-    ssl: {
-      rejectUnauthorized: false, // Required for Supabase
-    },
-  };
-  console.log("📡 Using DATABASE_URL connection string");
-} else {
-  // Use individual parameters (for local development)
-  poolConfig = {
-    user: process.env.DB_USER || "postgres",
-    host: process.env.DB_HOST || "localhost",
-    database: process.env.DB_NAME || "techleadhers_db",
-    password: process.env.DB_PASSWORD || "password",
-    port: process.env.DB_PORT || 5432,
-  };
-
-  // Add SSL config if enabled
-  if (process.env.DB_SSL === "true") {
-    poolConfig.ssl = {
-      rejectUnauthorized: false,
-    };
+// Initialize SQLite database
+const sequelize = new Sequelize({
+  dialect: 'sqlite',
+  storage: path.join(__dirname, '../../database.sqlite'),
+  logging: process.env.NODE_ENV === 'development' ? console.log : false,
+  define: {
+    timestamps: true,
+    underscored: true,
+    createdAt: 'created_at',
+    updatedAt: 'updated_at'
   }
-  console.log(`📡 Using individual DB parameters (Host: ${poolConfig.host})`);
-}
-
-const pool = new Pool(poolConfig);
-
-pool.on("error", (err) => {
-  console.error("Unexpected error on idle client", err);
 });
 
-// Initialize database tables
+// Test the database connection
+const testConnection = async () => {
+  try {
+    await sequelize.authenticate();
+    console.log('✅ SQLite connection has been established successfully.');
+    return true;
+  } catch (error) {
+    console.error('❌ Unable to connect to the database:', error);
+    return false;
+  }
+};
+
+// Initialize database models and relationships
 const initDatabase = async () => {
   try {
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS users (
-        id SERIAL PRIMARY KEY,
-        email VARCHAR(255) UNIQUE NOT NULL,
-        password VARCHAR(255) NOT NULL,
-        full_name VARCHAR(255) NOT NULL,
-        role VARCHAR(50) DEFAULT 'user',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-
-      CREATE TABLE IF NOT EXISTS forms (
-        id SERIAL PRIMARY KEY,
-        title VARCHAR(255) NOT NULL,
-        description TEXT,
-        created_by INTEGER NOT NULL REFERENCES users(id),
-        is_published BOOLEAN DEFAULT FALSE,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-
-      CREATE TABLE IF NOT EXISTS questions (
-        id SERIAL PRIMARY KEY,
-        form_id INTEGER NOT NULL REFERENCES forms(id) ON DELETE CASCADE,
-        text TEXT NOT NULL,
-        type VARCHAR(50) NOT NULL,
-        required BOOLEAN DEFAULT TRUE,
-        options JSONB,
-        correct_answer VARCHAR(255),
-        is_knockout BOOLEAN DEFAULT FALSE,
-        order_num INTEGER,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-
-      CREATE TABLE IF NOT EXISTS applications (
-        id SERIAL PRIMARY KEY,
-        form_id INTEGER NOT NULL REFERENCES forms(id),
-        user_id INTEGER NOT NULL REFERENCES users(id),
-        answers JSONB NOT NULL,
-        is_rejected BOOLEAN DEFAULT FALSE,
-        rejection_reason TEXT,
-        status VARCHAR(50) DEFAULT 'submitted',
-        submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
-      CREATE INDEX IF NOT EXISTS idx_forms_created_by ON forms(created_by);
-      CREATE INDEX IF NOT EXISTS idx_questions_form_id ON questions(form_id);
-      CREATE INDEX IF NOT EXISTS idx_applications_form_id ON applications(form_id);
-      CREATE INDEX IF NOT EXISTS idx_applications_user_id ON applications(user_id);
-    `);
-    console.log("Database tables initialized successfully");
+    await testConnection();
+    
+    // Import models
+    const User = require('../models/User');
+    const Application = require('../models/Application');
+    const ApplicationResponse = require('../models/ApplicationResponse');
+    const PasswordResetToken = require('../models/PasswordResetToken');
+    
+    // Define relationships
+    User.hasMany(Application, { foreignKey: 'user_id' });
+    Application.belongsTo(User, { foreignKey: 'user_id' });
+    
+    Application.hasMany(ApplicationResponse, { foreignKey: 'application_id' });
+    ApplicationResponse.belongsTo(Application, { foreignKey: 'application_id' });
+    
+    User.hasOne(PasswordResetToken, { foreignKey: 'user_id' });
+    PasswordResetToken.belongsTo(User, { foreignKey: 'user_id' });
+    
+    // Sync all models with the database
+    // In development, this will create tables if they don't exist
+    await sequelize.sync({ force: process.env.NODE_ENV === 'development' });
+    console.log('✅ Database tables synchronized');
+    
+    return true;
   } catch (error) {
-    console.error("Error initializing database:", error);
+    console.error('❌ Error initializing database:', error);
+    throw error;
   }
 };
 
 // Run initialization when module loads
-if (process.env.NODE_ENV !== "test") {
-  initDatabase();
+if (process.env.NODE_ENV !== 'test') {
+  initDatabase().catch(console.error);
 }
 
 module.exports = {
-  pool,
-  query: (text, params) => pool.query(text, params),
-  getClient: () => pool.connect(),
+  sequelize,
+  Sequelize,
+  initDatabase,
+  testConnection
 };
