@@ -1,0 +1,20 @@
+{
+  "name": "parivartan-frontend",
+  "version": "1.0.0",
+  "description": "React Native frontend for TechLeadHers - Parivartan Fellowship Platform",
+  "main": "FelloChakra/index.js",
+  "private": true,
+  "scripts": {
+    "start": "cd FelloChakra && npx expo start",
+    "android": "cd FelloChakra && npx expo start --android",
+    "ios": "cd FelloChakra && npx expo start --ios",
+    "web": "cd FelloChakra && npx expo start --web",
+    "dev": "cd FelloChakra && npx expo start -c"
+  },
+  "dependencies": {
+    "@react-navigation/native": "^7.1.26",
+    "@react-navigation/native-stack": "^7.9.0",
+    "react-native-safe-area-context": "^5.6.2",
+    "react-native-screens": "^4.19.0"
+  }
+}
